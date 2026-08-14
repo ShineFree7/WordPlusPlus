@@ -407,21 +407,96 @@
     z-index: 30;
     box-shadow: 0 4px 14px rgba(38, 50, 72, 0.12);
   }
-  .image-card {
+  .privacy-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .warn70 { color: var(--amber); }
+  .warn90 { color: var(--red); }
+  .admin-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .admin-stat {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 8px;
     text-align: center;
-    padding: 14px 16px;
   }
-  .image-card img {
-    max-width: 100%;
-    max-height: 190px;
-    border-radius: 14px;
-    background: #f1f4f8;
+  .admin-stat .num { font-size: 18px; font-weight: 800; }
+  .admin-stat .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .quota-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: #edf1f6;
+    overflow: hidden;
+    margin-top: 8px;
   }
-  #imgBtn {
-    margin: 0 auto;
+  .quota-bar .fill { height: 100%; background: var(--green); border-radius: 3px; }
+  .quota-bar.warn70 .fill { background: var(--amber); }
+  .quota-bar.warn90 .fill { background: var(--red); }
+  .admin-user {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
   }
-  #imgBtn:disabled {
-    opacity: 0.4;
+  .admin-user:last-child { border-bottom: 0; }
+  .admin-user-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .remark-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .remark-row input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .mini-btn {
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 7px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mini-btn.danger { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
+  .mini-btn.blue { color: var(--blue); border-color: var(--blue-soft); background: var(--blue-soft); }
+  .corr-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .corr-item {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+  }
+  .corr-item:last-child { border-bottom: 0; }
+  .corr-item .en { font-weight: 700; }
+  .corr-item .zh-line {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+    line-height: 1.5;
+  }
+  .corr-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
   }
   .login-overlay {
     position: fixed;
@@ -451,10 +526,6 @@
   .login-card .site-name {
     font-size: 24px;
     font-weight: 800;
-    margin-bottom: 6px;
-  }
-  .login-card h2 {
-    font-size: 22px;
     margin-bottom: 6px;
   }
   .login-card .sub {
@@ -499,10 +570,10 @@
   <div class="login-card">
     <div class="logo">祺</div>
     <div class="site-name" id="siteName">词加加</div>
-    <h2 id="authTitle">登录</h2>
     <div class="sub" id="authSub">手机号登录，独立保存你的进度</div>
     <input id="authPhone" type="tel" inputmode="numeric" maxlength="11" placeholder="手机号">
     <input id="authPass" type="password" placeholder="密码（至少 6 位）">
+    <div class="privacy-note" id="privacyNote" style="display:none">手机号仅用于登录和找回，不会公开</div>
     <button class="btn" id="authBtn" onclick="submitAuth()">登录</button>
     <button class="auth-switch" id="authSwitch" onclick="toggleAuthMode()">没有账号？注册一个</button>
     <div class="login-msg" id="authMsg"></div>
@@ -575,16 +646,18 @@ function normalize(s) {
 let state = null;
 let currentUser = null;
 let authToken = localStorage.getItem("wordToken") || "";
+let globalCorrections = {};
+const WORD_QUOTA = 10000;
 
 function defaultState() {
   return {
     startDate: todayStr(),
     blocks: [],
     nextBlockId: 1,
-    wordImages: {},
     viewDay: null,
     completedDays: {},
-    days: {}
+    days: {},
+    myCorrections: {}
   };
 }
 
@@ -611,8 +684,44 @@ function getAllWords() {
   return SAMPLE_WORDS.concat(extra);
 }
 
-function wordImageKey(w) {
-  return typeof w.id === "string" ? w.id : "s" + w.id;
+function wordCorrectionKey(w) {
+  return String(w.en || "").trim().toLowerCase();
+}
+
+function zhFor(w) {
+  const key = wordCorrectionKey(w);
+  if (state.myCorrections && state.myCorrections[key]) return state.myCorrections[key];
+  if (globalCorrections && globalCorrections[key]) return globalCorrections[key];
+  return w.zh;
+}
+
+function totalCustomWords() {
+  return (state.blocks || []).reduce((n, b) => n + ((b.words || []).length), 0);
+}
+
+function quotaRatio(used) {
+  return Math.min(100, Math.round(used / WORD_QUOTA * 100));
+}
+
+function warnClass(ratio) {
+  if (ratio >= 0.9) return "warn90";
+  if (ratio >= 0.7) return "warn70";
+  return "";
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function findWordByKey(key) {
+  const k = String(key || "").trim().toLowerCase();
+  const found = ALL_WORDS.find(w => String(w.en).toLowerCase() === k);
+  if (found) return found;
+  for (const b of state.blocks || []) {
+    const f = (b.words || []).find(w => String(w.en).toLowerCase() === k);
+    if (f) return f;
+  }
+  return null;
 }
 
 // 按当前日期计算今天应学的词
@@ -752,6 +861,7 @@ function renderHome() {
   const streak = calcStreak();
   const blockCount = (state.blocks || []).length;
   const blockWordCount = (state.blocks || []).reduce((n, b) => n + (b.words || []).length, 0);
+  const quotaCls = warnClass(blockWordCount / WORD_QUOTA);
 
   mainView.innerHTML = `
     <div class="hero">
@@ -772,7 +882,7 @@ function renderHome() {
     <div class="card" style="cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px" onclick="renderBlocksView()">
       <div>
         <div style="font-size:16px;font-weight:700">新建词汇</div>
-        <div style="font-size:12px;color:var(--muted)">${blockCount} 个词库 · ${blockWordCount} 个词</div>
+        <div style="font-size:12px;color:var(--muted)">${blockCount} 个词库 · <span class="${quotaCls}">${blockWordCount} / 10000 词</span></div>
       </div>
       <span style="color:var(--muted);font-size:22px">›</span>
     </div>
@@ -785,6 +895,21 @@ function renderHome() {
         <div class="setting-row"><span>第 ${day} 天已答对</span><span style="color:var(--green)">${correctCount} / ${plan.length}</span></div>
         <button class="btn secondary" onclick="changeStartDate()" style="margin-top:12px">修改起始日期</button>
       </div>
+      <div class="card">
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">修改密码</div>
+        <div class="supplement-form" style="margin-top:8px">
+          <input id="oldPass" type="password" placeholder="当前密码" autocomplete="current-password">
+          <input id="newPass" type="password" placeholder="新密码" autocomplete="new-password">
+          <input id="newPass2" type="password" placeholder="再输一次新密码" autocomplete="new-password">
+          <button class="btn secondary" style="border:0;background:var(--blue-soft);color:var(--blue)" onclick="changePassword()">保存新密码</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">${currentUser.is_admin ? "管理员密码需 12 位以上，含大小写、数字和符号" : "密码至少 6 位"}</div>
+      </div>
+      <div class="card">
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">释义修正</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">修正后只对自己生效，可随时恢复默认</div>
+        <button class="btn secondary" onclick="renderMyCorrections()">我的释义修正</button>
+      </div>
       <div class="card" id="adminCard" style="display:none">
         <div style="font-size:16px;font-weight:700;margin-bottom:6px">管理员</div>
         <button class="btn secondary" onclick="renderAdmin()">管理账号</button>
@@ -796,6 +921,34 @@ function renderHome() {
   if (adminCard && currentUser && currentUser.is_admin) {
     adminCard.style.display = "block";
   }
+}
+
+async function changePassword() {
+  const oldPass = document.getElementById("oldPass").value;
+  const newPass = document.getElementById("newPass").value;
+  const newPass2 = document.getElementById("newPass2").value;
+  if (!oldPass || !newPass) {
+    showToast("请填写完整");
+    return;
+  }
+  if (newPass !== newPass2) {
+    showToast("两次新密码不一致");
+    return;
+  }
+  const res = await fetch("/api/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+    body: JSON.stringify({ old_password: oldPass, new_password: newPass })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showToast(data.error || "修改失败");
+    return;
+  }
+  document.getElementById("oldPass").value = "";
+  document.getElementById("newPass").value = "";
+  document.getElementById("newPass2").value = "";
+  showToast("密码已修改");
 }
 
 function changeStartDate() {
@@ -830,11 +983,13 @@ function backToToday() {
 function renderBlocksView() {
   setBackVisible(true);
   const blocks = state.blocks || [];
+  const used = totalCustomWords();
+  const quotaCls = warnClass(used / WORD_QUOTA);
   mainView.innerHTML = `
     <div class="card" style="padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
         <div style="font-size:20px;font-weight:700">新建词汇</div>
-        <div style="font-size:12px;color:var(--muted)">${blocks.length} 个词库 · ${blocks.reduce((n,b)=>n+(b.words||[]).length,0)} 个词</div>
+        <div style="font-size:12px;color:var(--muted)">${blocks.length} 个词库 · <span class="${quotaCls}">${used} / 10000 词</span></div>
       </div>
       <button class="icon-btn" onclick="backHome()">‹</button>
     </div>
@@ -881,7 +1036,10 @@ function renderBlockDetail(id) {
   mainView.innerHTML = `
     <div class="card" style="padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
-        <div style="font-size:20px;font-weight:700">${esc(block.name)}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:20px;font-weight:700">${esc(block.name)}</div>
+          <button class="mini-btn" onclick="renameBlock(${id})">重命名</button>
+        </div>
         <div style="font-size:12px;color:var(--muted)">${words.length} 个词</div>
       </div>
       <button class="icon-btn" onclick="renderBlocksView()">‹</button>
@@ -918,9 +1076,24 @@ function renderBlockWords(id) {
   el.innerHTML = words.map((w, i) => `
     <div class="word-row">
       <span>${esc(w.en)}</span>
-      <span class="zh">${esc(w.zh)} <button class="btn ghost" style="width:auto;padding:4px 8px;font-size:12px;color:var(--red)" onclick="deleteBlockWord(${id}, ${i})">删</button></span>
+      <span class="zh">${esc(w.zh)} <button class="mini-btn" onclick="editBlockWord(${id}, ${i})">改</button> <button class="mini-btn danger" onclick="deleteBlockWord(${id}, ${i})">删</button></span>
     </div>
   `).join("");
+}
+
+function renameBlock(id) {
+  const block = (state.blocks || []).find(b => b.id === id);
+  if (!block) return;
+  const name = prompt("词库名称：", block.name);
+  if (name === null) return;
+  if (!name.trim()) {
+    showToast("名称不能为空");
+    return;
+  }
+  block.name = name.trim();
+  saveState();
+  renderBlockDetail(id);
+  showToast("已重命名");
 }
 
 function addBlockWord(id) {
@@ -928,6 +1101,10 @@ function addBlockWord(id) {
   const zh = document.getElementById("blkZh").value.trim();
   if (!en || !zh) {
     showToast("英文和中文都要填");
+    return;
+  }
+  if (totalCustomWords() >= WORD_QUOTA) {
+    showToast("自定义词库已达 10000 词上限，请先删除一些词");
     return;
   }
   const block = (state.blocks || []).find(b => b.id === id);
@@ -939,6 +1116,25 @@ function addBlockWord(id) {
   document.getElementById("blkZh").value = "";
   renderBlockDetail(id);
   showToast("已添加：" + en);
+}
+
+function editBlockWord(id, idx) {
+  const block = (state.blocks || []).find(b => b.id === id);
+  if (!block || !block.words[idx]) return;
+  const w = block.words[idx];
+  const en = prompt("英文 / 短语：", w.en);
+  if (en === null) return;
+  const zh = prompt("中文意思：", w.zh);
+  if (zh === null) return;
+  if (!en.trim() || !zh.trim()) {
+    showToast("英文和中文都要填");
+    return;
+  }
+  w.en = en.trim();
+  w.zh = zh.trim();
+  saveState();
+  renderBlockDetail(id);
+  showToast("已修改");
 }
 
 function deleteBlockWord(id, idx) {
@@ -1038,6 +1234,7 @@ function renderQuiz() {
   q.current = q.queue.shift();
   const total = buildTodayPlan().length;
   const progress = Math.min(100, Math.round((total - q.queue.length - q.wrong.length) / total * 100));
+  const hasMyCorr = !!(state.myCorrections || {})[wordCorrectionKey(q.current.word)];
 
   mainView.innerHTML = `
     <div class="word-card card">
@@ -1051,90 +1248,40 @@ function renderQuiz() {
       <button id="modeSelf" onclick="setMode('self')">自测</button>
     </div>
     <div id="quizBody"></div>
-    <div class="card image-card">
-      <button class="btn ghost" id="imgBtn" onclick="handleImage()">添加图片</button>
-      <input type="file" id="imgFile" accept="image/*" style="display:none">
-      <div id="wordImgWrap" style="display:none;margin-top:12px">
-        <img id="wordImg" src="" alt="单词图片">
-      </div>
+    <div class="corr-row">
+      <button class="btn ghost" style="width:auto;padding:8px 14px;font-size:13px" onclick="editCurrentDefinition()">修正释义</button>
+      ${hasMyCorr ? '<button class="btn ghost" style="width:auto;padding:8px 14px;font-size:13px" onclick="resetCurrentDefinition()">恢复默认</button>' : ""}
     </div>
     <div class="feedback" id="feedback"></div>
   `;
-  const imgBtn = document.getElementById("imgBtn");
-  const key = wordImageKey(q.current.word);
-  const hasImg = !!state.wordImages[key];
-  imgBtn.textContent = hasImg ? "显示图片" : "添加图片";
-  const img = document.getElementById("wordImg");
-  if (hasImg) img.src = state.wordImages[key];
-  const imgFile = document.getElementById("imgFile");
-  imgFile.onchange = function(e) {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    compressImage(f, function(dataUrl) {
-      const key = wordImageKey(q.current.word);
-      state.wordImages[key] = dataUrl;
-      saveState();
-      const img = document.getElementById("wordImg");
-      const wrap = document.getElementById("wordImgWrap");
-      const btn = document.getElementById("imgBtn");
-      if (img) img.src = dataUrl;
-      if (wrap) wrap.style.display = "none";
-      if (btn) btn.textContent = "显示图片";
-      showToast("图片已添加");
-    });
-  };
   setMode("choice");
 }
 
-let mode = "choice";
-
-function compressImage(file, callback) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const img = new Image();
-    img.onload = function() {
-      const max = 480;
-      let w = img.width, h = img.height;
-      if (w > max || h > max) {
-        if (w > h) { h = Math.round(h * max / w); w = max; }
-        else { w = Math.round(w * max / h); h = max; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, w, h);
-      callback(canvas.toDataURL("image/jpeg", 0.82));
-    };
-    img.onerror = function() { callback(e.target.result); };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleImage() {
-  const key = wordImageKey(quiz.current.word);
-  if (state.wordImages[key]) {
-    toggleImage();
-  } else {
-    document.getElementById("imgFile").click();
-  }
-}
-
-function toggleImage() {
-  const wrap = document.getElementById("wordImgWrap");
-  const img = document.getElementById("wordImg");
-  const btn = document.getElementById("imgBtn");
+function editCurrentDefinition() {
   const w = quiz.current.word;
-  if (wrap.style.display === "none") {
-    img.src = state.wordImages[wordImageKey(w)] || "";
-    wrap.style.display = "block";
-    btn.textContent = "隐藏图片";
-  } else {
-    wrap.style.display = "none";
-    btn.textContent = "显示图片";
+  const val = prompt("修正释义（仅自己可见，可随时恢复默认）：", zhFor(w));
+  if (val === null) return;
+  const v = val.trim();
+  if (!v) {
+    showToast("释义不能为空");
+    return;
   }
+  if (!state.myCorrections) state.myCorrections = {};
+  state.myCorrections[wordCorrectionKey(w)] = v;
+  saveState();
+  renderQuiz();
+  showToast("已保存到我的释义修正");
 }
+
+function resetCurrentDefinition() {
+  if (!confirm("恢复这个单词的默认释义？")) return;
+  if (state.myCorrections) delete state.myCorrections[wordCorrectionKey(quiz.current.word)];
+  saveState();
+  renderQuiz();
+  showToast("已恢复默认释义");
+}
+
+let mode = "choice";
 
 function setMode(m) {
   mode = m;
@@ -1177,12 +1324,12 @@ function setMode(m) {
 function buildChoiceHTML() {
   const w = quiz.current.word;
   const all = getAllWords();
-  const pool = all.filter(x => x.id !== w.id && x.zh !== w.zh);
+  const pool = all.filter(x => x.id !== w.id && zhFor(x) !== zhFor(w));
   const distractors = shuffle(pool).slice(0, 3);
   const options = shuffle([w, ...distractors]);
   return `
     <div class="options">
-      ${options.map((o, i) => `<button class="option" data-idx="${i}" data-zh="${encodeURIComponent(o.zh)}">${esc(o.zh)}</button>`).join("")}
+      ${options.map((o, i) => `<button class="option" data-idx="${i}" data-zh="${encodeURIComponent(zhFor(o))}">${esc(zhFor(o))}</button>`).join("")}
     </div>
   `;
 }
@@ -1193,16 +1340,16 @@ function answerChoice(idx) {
   const btn = document.querySelectorAll(".option")[idx];
   const chosenZh = decodeURIComponent(btn.dataset.zh);
   const buttons = document.querySelectorAll(".option");
-  if (chosenZh === w.zh) {
+  if (chosenZh === zhFor(w)) {
     btn.classList.add("right");
-    showFeedback(true, "回答正确！", w.zh);
+    showFeedback(true, "回答正确！", zhFor(w));
     markWord(true);
   } else {
     btn.classList.add("wrong");
     buttons.forEach(b => {
-      if (decodeURIComponent(b.dataset.zh) === w.zh) b.classList.add("right");
+      if (decodeURIComponent(b.dataset.zh) === zhFor(w)) b.classList.add("right");
     });
-    showFeedback(false, "回答错误", w.zh);
+    showFeedback(false, "回答错误", zhFor(w));
     markWord(false);
   }
 }
@@ -1212,13 +1359,13 @@ function checkInput() {
   const inp = document.getElementById("answerInput");
   const ans = normalize(inp ? inp.value : "");
   const w = quiz.current.word;
-  const zh = normalize(w.zh);
-  const zhParts = w.zh.split(/[；;]/).map(normalize).filter(Boolean);
+  const zh = normalize(zhFor(w));
+  const zhParts = zhFor(w).split(/[；;]/).map(normalize).filter(Boolean);
   if (ans && (ans === zh || zhParts.includes(ans))) {
-    showFeedback(true, "回答正确！", w.zh);
+    showFeedback(true, "回答正确！", zhFor(w));
     markWord(true);
   } else {
-    showFeedback(false, "回答错误", w.zh);
+    showFeedback(false, "回答错误", zhFor(w));
     markWord(false);
   }
 }
@@ -1228,17 +1375,17 @@ function revealAnswer() {
   const fb = document.getElementById("feedback");
   fb.className = "feedback";
   fb.style.display = "block";
-  fb.innerHTML = `正确意思：<span class="correct-zh">${esc((w.pos ? "[" + w.pos + "] " : "") + w.zh)}</span>`;
+  fb.innerHTML = `正确意思：<span class="correct-zh">${esc((w.pos ? "[" + w.pos + "] " : "") + zhFor(w))}</span>`;
 }
 
 function selfGrade(ok) {
   if (quiz.locked) return;
   const w = quiz.current.word;
   if (ok) {
-    showFeedback(true, "回答正确！", w.zh);
+    showFeedback(true, "回答正确！", zhFor(w));
     markWord(true);
   } else {
-    showFeedback(false, "回答错误", w.zh);
+    showFeedback(false, "回答错误", zhFor(w));
     markWord(false);
   }
 }
@@ -1246,7 +1393,7 @@ function selfGrade(ok) {
 function dontKnow() {
   if (quiz.locked) return;
   const w = quiz.current.word;
-  showFeedback(false, "回答错误", w.zh);
+  showFeedback(false, "回答错误", zhFor(w));
   markWord(false);
 }
 
@@ -1323,15 +1470,15 @@ function hideLogin() {
 
 function toggleAuthMode() {
   authMode = authMode === "login" ? "register" : "login";
-  document.getElementById("authTitle").textContent = authMode === "login" ? "登录" : "注册";
   document.getElementById("authSub").textContent = authMode === "login"
     ? "手机号登录，独立保存你的进度"
-    : "注册新账号（最多 7 个名额）";
+    : "注册新账号，数据独立保存";
   document.getElementById("authBtn").textContent = authMode === "login" ? "登录" : "注册";
   document.getElementById("authSwitch").textContent = authMode === "login"
     ? "没有账号？注册一个"
     : "已有账号？去登录";
   document.getElementById("authMsg").textContent = "";
+  document.getElementById("privacyNote").style.display = authMode === "register" ? "block" : "none";
 }
 
 async function submitAuth() {
@@ -1405,10 +1552,23 @@ async function loadUserState() {
   if (!state.startDate) state.startDate = todayStr();
   state.blocks = state.blocks || [];
   state.nextBlockId = state.nextBlockId || 1;
-  state.wordImages = state.wordImages || {};
   state.viewDay = state.viewDay || null;
   state.completedDays = state.completedDays || {};
   state.days = state.days || {};
+  state.myCorrections = state.myCorrections || {};
+  await loadCorrections();
+}
+
+async function loadCorrections() {
+  try {
+    const res = await fetch("/api/corrections", {
+      headers: { "Authorization": "Bearer " + authToken }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      globalCorrections = (data.global && typeof data.global === "object") ? data.global : {};
+    }
+  } catch (e) {}
 }
 
 async function logout() {
@@ -1427,7 +1587,107 @@ async function logout() {
   showLogin();
 }
 
+// ========== 我的释义修正 ==========
+function renderMyCorrections() {
+  setBackVisible(true);
+  const my = state.myCorrections || {};
+  const keys = Object.keys(my).sort();
+  mainView.innerHTML = `
+    <div class="card" style="padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div style="font-size:20px;font-weight:700">我的释义修正</div>
+        <div style="font-size:12px;color:var(--muted)">仅自己可见 · ${keys.length} 条</div>
+      </div>
+      <button class="icon-btn" onclick="renderHome()">‹</button>
+    </div>
+    <button class="btn secondary" onclick="addMyCorrection()" style="margin-bottom:12px">添加修正</button>
+    <div class="card" style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">修正后的释义只对你自己生效；想恢复原版释义，点“恢复默认”即可。</div>
+    <div class="card" id="myCorrList"></div>
+  `;
+  const el = document.getElementById("myCorrList");
+  if (!keys.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:12px 0">还没有修正记录</div>';
+    return;
+  }
+  el.innerHTML = keys.map((k, i) => {
+    const w = findWordByKey(k);
+    const defaultZh = w ? w.zh : "（未找到原词）";
+    return `
+      <div class="corr-item">
+        <div class="en">${esc(k)}</div>
+        <div class="zh-line">原释义：${esc(defaultZh)}</div>
+        <div class="zh-line">我的释义：${esc(my[k])}</div>
+        <div class="corr-actions">
+          <button class="mini-btn blue" onclick="editMyCorrection(${i})">编辑</button>
+          <button class="mini-btn danger" onclick="resetMyCorrection(${i})">恢复默认</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function addMyCorrection() {
+  const word = prompt("要修正哪个单词？（英文）", "");
+  if (!word || !word.trim()) return;
+  const key = word.trim().toLowerCase();
+  const w = findWordByKey(key);
+  const zh = prompt("修正后的中文释义：", w ? w.zh : "");
+  if (zh === null || !zh.trim()) return;
+  if (!state.myCorrections) state.myCorrections = {};
+  state.myCorrections[key] = zh.trim();
+  saveState();
+  renderMyCorrections();
+  showToast("已保存");
+}
+
+function editMyCorrection(idx) {
+  const keys = Object.keys(state.myCorrections || {}).sort();
+  const k = keys[idx];
+  const zh = prompt("修改后的中文释义：", state.myCorrections[k]);
+  if (zh === null || !zh.trim()) return;
+  state.myCorrections[k] = zh.trim();
+  saveState();
+  renderMyCorrections();
+  showToast("已更新");
+}
+
+function resetMyCorrection(idx) {
+  const keys = Object.keys(state.myCorrections || {}).sort();
+  const k = keys[idx];
+  if (!confirm("恢复这个单词的默认释义？")) return;
+  delete state.myCorrections[k];
+  saveState();
+  renderMyCorrections();
+  showToast("已恢复默认");
+}
+
 // ========== 管理员 ==========
+let adminGlobalCorrections = {};
+let adminRefreshing = false;
+document.addEventListener("visibilitychange", function() {
+  if (!document.hidden && document.getElementById("adminUserList")) {
+    refreshAdminQuietly();
+  }
+});
+
+function formatBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(2) + " MB";
+}
+
+async function refreshAdminQuietly() {
+  if (adminRefreshing) return;
+  const active = document.activeElement;
+  if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+  adminRefreshing = true;
+  try {
+    await renderAdmin();
+  } finally {
+    adminRefreshing = false;
+  }
+}
+
 async function renderAdmin() {
   setBackVisible(true);
   mainView.innerHTML = '<div class="card" style="text-align:center;color:var(--muted)">加载中...</div>';
@@ -1440,38 +1700,97 @@ async function renderAdmin() {
     renderHome();
     return;
   }
+  adminGlobalCorrections = data.global_corrections || {};
+  const maxText = data.max_users > 0 ? String(data.max_users) : "不限";
+  const dbSizeText = formatBytes(data.db_size);
+  const quotaText = formatBytes(data.free_quota);
+  const usageRatio = data.free_quota > 0 ? data.db_size / data.free_quota : 0;
+  const usagePct = Math.min(100, Math.round(usageRatio * 100));
+  const usageCls = warnClass(usageRatio);
+  const gcKeys = Object.keys(adminGlobalCorrections).sort();
   mainView.innerHTML = `
     <div class="card" style="padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
         <div style="font-size:20px;font-weight:700">管理员</div>
-        <div style="font-size:12px;color:var(--muted)">当前名额 ${data.max_users} 人</div>
+        <div style="font-size:12px;color:var(--muted)">当前名额 ${data.max_users > 0 ? data.max_users + " 人" : "不限"}</div>
       </div>
-      <button class="icon-btn" onclick="renderHome()">‹</button>
+      <div style="display:flex;gap:8px">
+        <button class="mini-btn" onclick="refreshAdminQuietly()">刷新</button>
+        <button class="icon-btn" onclick="renderHome()">‹</button>
+      </div>
+    </div>
+    <div class="admin-stats">
+      <div class="admin-stat"><div class="num">${dbSizeText}</div><div class="label">数据库大小</div></div>
+      <div class="admin-stat"><div class="num">${data.registered_count}<span style="font-size:11px"> / ${maxText}</span></div><div class="label">已注册 / 名额</div></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+        <span>总用量 / 免费额度</span>
+        <span class="${usageCls}">${usagePct}%</span>
+      </div>
+      <div class="quota-bar ${usageCls}"><div class="fill" style="width:${usagePct}%"></div></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">数据库 ${dbSizeText} / ${quotaText}，达到 70% 变黄、90% 变红</div>
     </div>
     <div class="card">
       <div style="font-size:15px;font-weight:700;margin-bottom:8px">修改注册名额</div>
-      <div class="supplement-form">
-        <input id="maxUsersInput" type="number" min="1" max="100" value="${data.max_users}">
-        <button onclick="updateMaxUsers()">保存名额</button>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">填 0 表示不限；最多可设 999999。</div>
+      <div class="remark-row">
+        <input id="maxUsersInput" type="number" min="0" max="999999" value="${data.max_users}">
+        <button class="mini-btn blue" onclick="setUnlimitedQuota()">设为不限</button>
+        <button class="btn secondary" style="width:auto;padding:8px 14px" onclick="updateMaxUsers()">保存</button>
       </div>
     </div>
     <div class="card">
       <div style="font-size:15px;font-weight:700;margin-bottom:8px">已注册账号</div>
-      <div class="word-list" id="adminUserList"></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">每人自定义词库总词数上限 ${data.word_quota} 个</div>
+      <div id="adminUserList"></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:700">全局释义修正</div>
+        <button class="mini-btn blue" onclick="addGlobalCorrection()">添加</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:4px">对所有用户生效；普通用户仍可另存自己的释义修正。</div>
+      <div id="globalCorrList">${gcKeys.length ? gcKeys.map((k, i) => {
+        return `
+          <div class="corr-item">
+            <div class="en">${esc(k)}</div>
+            <div class="zh-line">${esc(adminGlobalCorrections[k])}</div>
+            <div class="corr-actions">
+              <button class="mini-btn blue" onclick="editGlobalCorrection(${i})">编辑</button>
+              <button class="mini-btn danger" onclick="deleteGlobalCorrection(${i})">删除</button>
+            </div>
+          </div>`;
+      }).join("") : '<div style="text-align:center;color:var(--muted);padding:10px 0">还没有全局修正</div>'}</div>
     </div>
   `;
-  document.getElementById("adminUserList").innerHTML = data.users.map(u => `
-    <div class="word-row">
-      <span>${esc(u.phone)} ${u.is_admin ? "（管理员）" : ""}</span>
-      <span class="zh"><button class="btn ghost" style="width:auto;padding:4px 8px;font-size:12px;color:var(--red)" onclick="deleteUser(${u.id})">删除</button></span>
-    </div>
-  `).join("") || '<div class="word-row"><span>还没有账号</span><span class="zh"></span></div>';
+  document.getElementById("adminUserList").innerHTML = data.users.length ? data.users.map(u => {
+    const ratio = u.word_count / data.word_quota;
+    const qCls = warnClass(ratio);
+    return `
+      <div class="admin-user">
+        <div class="admin-user-top">
+          <span style="font-size:13px;font-weight:700;white-space:nowrap">${esc(u.phone)}${u.is_admin ? ' <span style="color:var(--blue);font-size:11px">管理员</span>' : ""}</span>
+          ${u.is_admin ? "" : `
+          <input id="remarkInput${u.id}" type="text" placeholder="备注" value="${escAttr(u.remark)}" style="flex:1;min-width:0;font-size:12px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;outline:none">
+          <button class="mini-btn blue" style="white-space:nowrap;padding:6px 8px;font-size:12px" onclick="updateRemark(${u.id})">保存备注</button>
+          <button class="mini-btn danger" style="white-space:nowrap;padding:6px 8px;font-size:12px" onclick="deleteUser(${u.id})">删除</button>`}
+        </div>
+        <div class="admin-user-usage" style="font-size:12px;color:var(--muted);margin-top:4px">词库 ${u.block_count} · 单词 <span class="${qCls}">${u.word_count} / ${data.word_quota}</span></div>
+      </div>
+    `;
+  }).join("") : '<div style="text-align:center;color:var(--muted);padding:12px 0">还没有账号</div>';
+}
+
+function setUnlimitedQuota() {
+  document.getElementById("maxUsersInput").value = "0";
+  showToast("填 0 表示不限，点保存生效");
 }
 
 async function updateMaxUsers() {
   const val = parseInt(document.getElementById("maxUsersInput").value, 10);
-  if (!val || val < 1 || val > 100) {
-    showToast("名额需在 1 到 100 之间");
+  if (isNaN(val) || val < 0 || val > 999999) {
+    showToast("名额需为 0（不限）或 1 到 999999");
     return;
   }
   const res = await fetch("/api/admin/settings", {
@@ -1481,10 +1800,25 @@ async function updateMaxUsers() {
   });
   const data = await res.json();
   if (res.ok) {
-    showToast("名额已改为 " + val);
+    showToast(val === 0 ? "已设为不限" : "名额已改为 " + val);
     renderAdmin();
   } else {
     showToast(data.error || "修改失败");
+  }
+}
+
+async function updateRemark(id) {
+  const remark = document.getElementById("remarkInput" + id).value.trim();
+  const res = await fetch("/api/admin/users/" + id + "/remark", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+    body: JSON.stringify({ remark: remark })
+  });
+  const data = await res.json();
+  if (res.ok) {
+    showToast("备注已保存");
+  } else {
+    showToast(data.error || "保存失败");
   }
 }
 
@@ -1500,6 +1834,54 @@ async function deleteUser(id) {
     renderAdmin();
   } else {
     showToast(data.error || "删除失败");
+  }
+}
+
+async function saveGlobalCorrection(word, zh) {
+  const res = await fetch("/api/admin/global-corrections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+    body: JSON.stringify({ word: word, zh: zh })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showToast(data.error || "保存失败");
+    return false;
+  }
+  return true;
+}
+
+async function addGlobalCorrection() {
+  const word = prompt("要修正哪个单词？（英文）", "");
+  if (!word || !word.trim()) return;
+  const key = word.trim().toLowerCase();
+  const w = findWordByKey(key);
+  const zh = prompt("修正后的中文释义：", w ? w.zh : "");
+  if (zh === null || !zh.trim()) return;
+  if (await saveGlobalCorrection(key, zh.trim())) {
+    showToast("已保存全局修正");
+    renderAdmin();
+  }
+}
+
+async function editGlobalCorrection(idx) {
+  const keys = Object.keys(adminGlobalCorrections || {}).sort();
+  const k = keys[idx];
+  const zh = prompt("修改后的中文释义：", adminGlobalCorrections[k]);
+  if (zh === null || !zh.trim()) return;
+  if (await saveGlobalCorrection(k, zh.trim())) {
+    showToast("已更新");
+    renderAdmin();
+  }
+}
+
+async function deleteGlobalCorrection(idx) {
+  const keys = Object.keys(adminGlobalCorrections || {}).sort();
+  const k = keys[idx];
+  if (!confirm("删除这条全局释义修正？")) return;
+  if (await saveGlobalCorrection(k, "")) {
+    showToast("已删除");
+    renderAdmin();
   }
 }
 

@@ -3,6 +3,7 @@ __pycache__/
 *.db
 *.sqlite3
 .env
+admin_phone.txt
 *.log
 venv/
 .venv/
