@@ -656,8 +656,7 @@ function defaultState() {
     nextBlockId: 1,
     viewDay: null,
     completedDays: {},
-    days: {},
-    myCorrections: {}
+    days: {}
   };
 }
 
@@ -690,7 +689,6 @@ function wordCorrectionKey(w) {
 
 function zhFor(w) {
   const key = wordCorrectionKey(w);
-  if (state.myCorrections && state.myCorrections[key]) return state.myCorrections[key];
   if (globalCorrections && globalCorrections[key]) return globalCorrections[key];
   return w.zh;
 }
@@ -905,12 +903,6 @@ function renderHome() {
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">${currentUser.is_admin ? "管理员密码需 12 位以上，含大小写、数字和符号" : "密码至少 6 位"}</div>
       </div>
-      ${currentUser && currentUser.is_admin ? `
-      <div class="card">
-        <div style="font-size:16px;font-weight:700;margin-bottom:6px">释义修正</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">修正后只对自己生效，可随时恢复默认</div>
-        <button class="btn secondary" onclick="renderMyCorrections()">我的释义修正</button>
-      </div>` : ""}
       <div class="card" id="adminCard" style="display:none">
         <div style="font-size:16px;font-weight:700;margin-bottom:6px">管理员</div>
         <button class="btn secondary" onclick="renderAdmin()">管理账号</button>
@@ -1539,7 +1531,6 @@ async function loadUserState() {
   state.viewDay = state.viewDay || null;
   state.completedDays = state.completedDays || {};
   state.days = state.days || {};
-  state.myCorrections = state.myCorrections || {};
   await loadCorrections();
 }
 
@@ -1569,85 +1560,6 @@ async function logout() {
   state = null;
   localStorage.removeItem("wordToken");
   showLogin();
-}
-
-// ========== 我的释义修正 ==========
-function renderMyCorrections() {
-  if (!currentUser || !currentUser.is_admin) {
-    showToast("仅管理员可使用释义修正");
-    renderHome();
-    return;
-  }
-  setBackVisible(true);
-  const my = state.myCorrections || {};
-  const keys = Object.keys(my).sort();
-  mainView.innerHTML = `
-    <div class="card" style="padding:16px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div>
-        <div style="font-size:20px;font-weight:700">我的释义修正</div>
-        <div style="font-size:12px;color:var(--muted)">仅自己可见 · ${keys.length} 条</div>
-      </div>
-      <button class="icon-btn" onclick="renderHome()">‹</button>
-    </div>
-    <button class="btn secondary" onclick="addMyCorrection()" style="margin-bottom:12px">添加修正</button>
-    <div class="card" style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px">修正后的释义只对你自己生效；想恢复原版释义，点“恢复默认”即可。</div>
-    <div class="card" id="myCorrList"></div>
-  `;
-  const el = document.getElementById("myCorrList");
-  if (!keys.length) {
-    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:12px 0">还没有修正记录</div>';
-    return;
-  }
-  el.innerHTML = keys.map((k, i) => {
-    const w = findWordByKey(k);
-    const defaultZh = w ? w.zh : "（未找到原词）";
-    return `
-      <div class="corr-item">
-        <div class="en">${esc(k)}</div>
-        <div class="zh-line">原释义：${esc(defaultZh)}</div>
-        <div class="zh-line">我的释义：${esc(my[k])}</div>
-        <div class="corr-actions">
-          <button class="mini-btn blue" onclick="editMyCorrection(${i})">编辑</button>
-          <button class="mini-btn danger" onclick="resetMyCorrection(${i})">恢复默认</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-function addMyCorrection() {
-  const word = prompt("要修正哪个单词？（英文）", "");
-  if (!word || !word.trim()) return;
-  const key = word.trim().toLowerCase();
-  const w = findWordByKey(key);
-  const zh = prompt("修正后的中文释义：", w ? w.zh : "");
-  if (zh === null || !zh.trim()) return;
-  if (!state.myCorrections) state.myCorrections = {};
-  state.myCorrections[key] = zh.trim();
-  saveState();
-  renderMyCorrections();
-  showToast("已保存");
-}
-
-function editMyCorrection(idx) {
-  const keys = Object.keys(state.myCorrections || {}).sort();
-  const k = keys[idx];
-  const zh = prompt("修改后的中文释义：", state.myCorrections[k]);
-  if (zh === null || !zh.trim()) return;
-  state.myCorrections[k] = zh.trim();
-  saveState();
-  renderMyCorrections();
-  showToast("已更新");
-}
-
-function resetMyCorrection(idx) {
-  const keys = Object.keys(state.myCorrections || {}).sort();
-  const k = keys[idx];
-  if (!confirm("恢复这个单词的默认释义？")) return;
-  delete state.myCorrections[k];
-  saveState();
-  renderMyCorrections();
-  showToast("已恢复默认");
 }
 
 // ========== 管理员 ==========

@@ -165,7 +165,6 @@ def default_state():
         "viewDay": None,
         "completedDays": {},
         "days": {},
-        "myCorrections": {},
     }
 
 
