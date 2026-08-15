@@ -905,11 +905,12 @@ function renderHome() {
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">${currentUser.is_admin ? "管理员密码需 12 位以上，含大小写、数字和符号" : "密码至少 6 位"}</div>
       </div>
+      ${currentUser && currentUser.is_admin ? `
       <div class="card">
         <div style="font-size:16px;font-weight:700;margin-bottom:6px">释义修正</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:8px">修正后只对自己生效，可随时恢复默认</div>
         <button class="btn secondary" onclick="renderMyCorrections()">我的释义修正</button>
-      </div>
+      </div>` : ""}
       <div class="card" id="adminCard" style="display:none">
         <div style="font-size:16px;font-weight:700;margin-bottom:6px">管理员</div>
         <button class="btn secondary" onclick="renderAdmin()">管理账号</button>
@@ -1176,20 +1177,32 @@ function calcStreak() {
 let quiz = null;
 
 function startCheckin() {
-  const plan = buildTodayPlan();
-  if (!plan.length) {
+  const fullPlan = buildTodayPlan();
+  if (!fullPlan.length) {
     showToast("这一天没有要背的词");
     return;
   }
   const day = getCurrentDay();
   const dayRecord = state.completedDays[day] || { done: false, records: {} };
+  // 已完成的一天的“重新打卡”：清空当天记录，让全部单词重新出现
+  if (dayRecord.done) {
+    state.completedDays[day] = { done: false, records: {} };
+    saveState();
+  }
+  // 未完成时继续：跳过已经答对的单词
+  const records = (state.completedDays[day] || {}).records || {};
+  const plan = fullPlan.filter(p => records[p.word.id] !== true);
+  if (!plan.length) {
+    finishCheckin();
+    return;
+  }
   quiz = {
     today: todayStr(),
     day,
     queue: shuffle(plan),
     wrong: [],
     current: null,
-    correct: dayRecord.done ? 0 : 0,
+    correct: 0,
     locked: false,
     origin: "daily"
   };
@@ -1234,7 +1247,6 @@ function renderQuiz() {
   q.current = q.queue.shift();
   const total = buildTodayPlan().length;
   const progress = Math.min(100, Math.round((total - q.queue.length - q.wrong.length) / total * 100));
-  const hasMyCorr = !!(state.myCorrections || {})[wordCorrectionKey(q.current.word)];
 
   mainView.innerHTML = `
     <div class="word-card card">
@@ -1243,45 +1255,17 @@ function renderQuiz() {
       <div class="progress-line"><div class="progress-fill" style="width:${progress}%"></div></div>
     </div>
     <div class="mode-switch">
-      <button class="active" id="modeChoice" onclick="setMode('choice')">选择题</button>
+      <button class="active" id="modeSelf" onclick="setMode('self')">自测</button>
+      <button id="modeChoice" onclick="setMode('choice')">选择题</button>
       <button id="modeInput" onclick="setMode('input')">手打答案</button>
-      <button id="modeSelf" onclick="setMode('self')">自测</button>
     </div>
     <div id="quizBody"></div>
-    <div class="corr-row">
-      <button class="btn ghost" style="width:auto;padding:8px 14px;font-size:13px" onclick="editCurrentDefinition()">修正释义</button>
-      ${hasMyCorr ? '<button class="btn ghost" style="width:auto;padding:8px 14px;font-size:13px" onclick="resetCurrentDefinition()">恢复默认</button>' : ""}
-    </div>
     <div class="feedback" id="feedback"></div>
   `;
-  setMode("choice");
+  setMode("self");
 }
 
-function editCurrentDefinition() {
-  const w = quiz.current.word;
-  const val = prompt("修正释义（仅自己可见，可随时恢复默认）：", zhFor(w));
-  if (val === null) return;
-  const v = val.trim();
-  if (!v) {
-    showToast("释义不能为空");
-    return;
-  }
-  if (!state.myCorrections) state.myCorrections = {};
-  state.myCorrections[wordCorrectionKey(w)] = v;
-  saveState();
-  renderQuiz();
-  showToast("已保存到我的释义修正");
-}
-
-function resetCurrentDefinition() {
-  if (!confirm("恢复这个单词的默认释义？")) return;
-  if (state.myCorrections) delete state.myCorrections[wordCorrectionKey(quiz.current.word)];
-  saveState();
-  renderQuiz();
-  showToast("已恢复默认释义");
-}
-
-let mode = "choice";
+let mode = "self";
 
 function setMode(m) {
   mode = m;
@@ -1589,6 +1573,11 @@ async function logout() {
 
 // ========== 我的释义修正 ==========
 function renderMyCorrections() {
+  if (!currentUser || !currentUser.is_admin) {
+    showToast("仅管理员可使用释义修正");
+    renderHome();
+    return;
+  }
   setBackVisible(true);
   const my = state.myCorrections || {};
   const keys = Object.keys(my).sort();
@@ -1750,7 +1739,7 @@ async function renderAdmin() {
         <div style="font-size:15px;font-weight:700">全局释义修正</div>
         <button class="mini-btn blue" onclick="addGlobalCorrection()">添加</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:4px">对所有用户生效；普通用户仍可另存自己的释义修正。</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:4px">对所有用户生效；仅管理员可维护释义修正。</div>
       <div id="globalCorrList">${gcKeys.length ? gcKeys.map((k, i) => {
         return `
           <div class="corr-item">
