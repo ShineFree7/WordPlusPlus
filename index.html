@@ -70,6 +70,10 @@
   .brand-sub {
     font-size: 12px;
     color: var(--muted);
+    max-width: 230px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .icon-btn {
     width: 40px;
@@ -105,7 +109,7 @@
   }
   .book-picker-card {
     width: 100%;
-    max-width: 340px;
+    max-width: 420px;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -127,42 +131,51 @@
     font-weight: 700;
     margin-bottom: 12px;
   }
-  .book-option {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 14px;
-    margin: 0;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--card);
-    color: var(--ink);
-    font-size: 15px;
-    cursor: pointer;
+  .book-meta {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    line-height: 1.3;
   }
-  .book-option.active {
+  .book-select-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+  }
+  .book-select-card.active {
     border-color: var(--blue);
     background: var(--blue-soft);
-    color: var(--blue);
-    font-weight: 700;
   }
-  .book-row {
-    display: flex;
-    gap: 8px;
-    margin: 8px 0;
+  .book-current-tag {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--blue);
+    color: #fff;
   }
   .book-daily-btn {
-    width: 68px;
     flex: none;
-    border: 1px solid var(--line);
+    border: 0;
     border-radius: 10px;
-    background: var(--blue-soft);
-    color: var(--blue);
+    background: #f2f6ff;
+    color: #20242b;
     font-size: 12px;
-    line-height: 1.4;
+    font-weight: 600;
+    line-height: 1;
+    padding: 9px 14px;
     cursor: pointer;
+    white-space: nowrap;
+  }
+  .book-select-card.active .book-daily-btn {
+    background: #ffffff;
   }
   .hero {
     background: var(--card);
@@ -480,21 +493,21 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .back-home {
     position: fixed;
-    top: calc(64px + env(safe-area-inset-top));
-    left: 12px;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: 1px solid var(--line);
-    background: var(--card);
-    color: var(--ink);
-    font-size: 20px;
+    top: calc(54px + env(safe-area-inset-top));
+    left: -8px;
+    width: 56px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: #20242b;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
     display: none;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     z-index: 30;
-    box-shadow: 0 4px 14px rgba(38, 50, 72, 0.12);
   }
   .privacy-note {
     font-size: 12px;
@@ -679,7 +692,7 @@
       </div>
     </div>
     <div style="display:flex;align-items:center">
-      <button class="icon-btn book-btn" onclick="openBookPicker()">词书</button>
+      <button class="icon-btn book-btn" onclick="renderBooksView()">词书</button>
       <button class="icon-btn" id="menuBtn" onclick="toggleSettings()">⚙</button>
     </div>
   </header>
@@ -690,13 +703,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="book-picker-overlay hidden" id="bookPickerOverlay">
-  <div class="book-picker-card">
-    <div class="book-picker-title">选择词书</div>
-    <div id="bookPickerList"></div>
-    <button class="btn ghost" onclick="closeBookPicker()">关闭</button>
-  </div>
-</div>
 <div class="book-picker-overlay hidden" id="askOverlay">
   <div class="book-picker-card">
     <div class="book-picker-title" id="askTitle"></div>
@@ -1083,7 +1089,7 @@ function renderHome() {
   }
   const brandSub = document.getElementById("brandSub");
   if (brandSub) {
-    brandSub.textContent = bookDef.name + " · " + daily + " 新词 + 艾宾浩斯";
+    brandSub.textContent = bookDef.name + " · 艾宾浩斯复习";
   }
 }
 
@@ -1095,31 +1101,35 @@ function switchBook(bookId) {
   renderHome();
 }
 
-function openBookPicker() {
-  const overlay = document.getElementById("bookPickerOverlay");
-  if (!overlay) return;
-  overlay.classList.remove("hidden");
-  const list = document.getElementById("bookPickerList");
+function renderBooksView() {
+  setBackVisible(true);
   const active = getActiveBookId();
-  list.innerHTML = BUILTIN_BOOKS.map(b => `
-    <div class="book-row">
-      <button class="book-option ${b.id === active ? "active" : ""}" onclick="chooseBook('${b.id}')">
-        <span>${esc(b.name)}</span>
-        <span style="font-size:12px;color:var(--muted)">${b.words.length} 词${b.id === active ? " · 当前" : ""}</span>
-      </button>
-      <button class="book-daily-btn" onclick="changeDailyNewFor('${b.id}')">${getDailyNew(b.id)}/天<br>修改</button>
+  mainView.innerHTML = `
+    <div class="card" style="padding:16px 18px;margin-bottom:16px">
+      <div style="font-size:20px;font-weight:700">词书</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">艾宾浩斯复习 · 切换词书不会丢进度</div>
     </div>
-  `).join("");
+    ${BUILTIN_BOOKS.map(b => {
+      const isActive = b.id === active;
+      const daily = getDailyNew(b.id);
+      return `
+        <div class="book-select-card ${isActive ? "active" : ""}" onclick="chooseBook('${b.id}')">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <span style="font-size:16px;font-weight:700">${esc(b.name)}</span>
+              ${isActive ? '<span class="book-current-tag">当前</span>' : ""}
+            </div>
+            <div class="book-meta">${b.words.length} 词 · 每天 ${daily} 个新词 · 艾宾浩斯复习</div>
+          </div>
+          <button class="book-daily-btn" onclick="event.stopPropagation(); changeDailyNewFor('${b.id}')">修改</button>
+        </div>
+      `;
+    }).join("")}
+  `;
 }
 
 function chooseBook(bookId) {
   switchBook(bookId);
-  closeBookPicker();
-}
-
-function closeBookPicker() {
-  const overlay = document.getElementById("bookPickerOverlay");
-  if (overlay) overlay.classList.add("hidden");
 }
 
 let askCallback = null;
@@ -1160,10 +1170,7 @@ function changeDailyNewFor(bookId) {
       state.bookDaily = state.bookDaily || {};
       state.bookDaily[bookId] = n;
       saveState();
-      if (getActiveBookId() === bookId) {
-        renderHome();
-      }
-      openBookPicker();
+      renderBooksView();
       showToast("已改为每天 " + n + " 个新词");
     } else {
       showToast("请输入 1 到 100 之间的数量");
