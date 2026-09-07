@@ -316,6 +316,8 @@
     color: var(--muted);
     min-height: 16px;
     text-align: center;
+    white-space: pre-line;
+    line-height: 1.6;
   }
   .answer-row {
     display: flex;
@@ -714,9 +716,9 @@
 // 每个单词格式：{ id: 序号, en: "英文", zh: "中文释义" }
 const SAMPLE_WORDS = ALL_WORDS;
 const BUILTIN_BOOKS = [
+  { id: "sx500", name: "山西专升本500高频词", words: SX500_WORDS, defaultDaily: 10 },
   { id: "1800", name: "1800词", words: ALL_WORDS, defaultDaily: 30 },
-  { id: "hf500", name: "500高频词", words: HF500_WORDS, defaultDaily: 10 },
-  { id: "hfsupp", name: "高频词补充", words: HF_SUPP_WORDS, defaultDaily: 5 }
+  { id: "hf500", name: "全国专升本500高频词", words: HF500_WORDS, defaultDaily: 10 }
 ];
 const SITE_NAME = "词加加";
 
@@ -771,12 +773,12 @@ function defaultState() {
     viewDay: null,
     completedDays: {},
     days: {},
-    activeBook: "1800",
+    activeBook: "sx500",
     bookProgress: {},
     bookDaily: {
+      "sx500": 10,
       "1800": 30,
-      "hf500": 10,
-      "hfsupp": 5
+      "hf500": 10
     }
   };
 }
@@ -794,7 +796,7 @@ function saveState() {
 }
 
 function getActiveBookId() {
-  return state.activeBook || "1800";
+  return BUILTIN_BOOKS.some(b => b.id === state.activeBook) ? state.activeBook : "sx500";
 }
 
 function getBookDef(bookId) {
@@ -1800,13 +1802,15 @@ async function loadUserState() {
   state.viewDay = state.viewDay || null;
   state.completedDays = state.completedDays || {};
   state.days = state.days || {};
-  state.activeBook = state.activeBook || "1800";
+  state.activeBook = BUILTIN_BOOKS.some(b => b.id === state.activeBook) ? state.activeBook : "sx500";
   state.bookProgress = state.bookProgress || {};
   state.bookDaily = Object.assign({
+    "sx500": 10,
     "1800": 30,
-    "hf500": 10,
-    "hfsupp": 5
+    "hf500": 10
   }, state.bookDaily || {});
+  delete state.bookProgress.hfsupp;
+  delete state.bookDaily.hfsupp;
   await loadCorrections();
 }
 
