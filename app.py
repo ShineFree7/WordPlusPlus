@@ -165,6 +165,13 @@ def default_state():
         "viewDay": None,
         "completedDays": {},
         "days": {},
+        "activeBook": "1800",
+        "bookProgress": {},
+        "bookDaily": {
+            "1800": 30,
+            "hf500": 10,
+            "hfsupp": 5,
+        },
     }
 
 
