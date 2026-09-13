@@ -3,9 +3,16 @@ __pycache__/
 *.db
 *.sqlite3
 .env
+admin_phone.txt
+hf500_phones.txt
+private_data/
 *.log
 venv/
 .venv/
 deploy.zip
+deploy-*.zip
+static/audio/*
+!static/audio/correct.wav
+!static/audio/wrong.wav
 .DS_Store
 Thumbs.db
